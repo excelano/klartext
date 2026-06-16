@@ -19,8 +19,9 @@ public enum Klartext {
     /// below it). For HTML it first looks for a quote container; finding none it
     /// reduces to text and runs the text markers, so top posted mail with no
     /// container still folds. With `Options.separateSignature` on (the default), a
-    /// trailing signature is then split off `visible` into `signature`. Attachment
-    /// classification is layered on in a later build step.
+    /// trailing signature is then split off `visible` into `signature`. Raw
+    /// attachment parts are resolved against the HTML so each one's inline status
+    /// reflects whether the body actually references it.
     public static func parse(
         plainText: String? = nil,
         html: String? = nil,
@@ -39,7 +40,13 @@ public enum Klartext {
         }
 
         let (body, signature) = Signature.separate(seam.visible, options: options)
-        return ParsedBody(visible: body, quoted: seam.quoted, signature: signature, sourceFormat: format)
+        return ParsedBody(
+            visible: body,
+            quoted: seam.quoted,
+            signature: signature,
+            sourceFormat: format,
+            attachments: AttachmentClassifier.classify(attachments, html: html)
+        )
     }
 
     /// Reduce HTML to readable plain text: block aware line breaks, entities
