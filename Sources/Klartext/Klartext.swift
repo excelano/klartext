@@ -56,18 +56,19 @@ public enum Klartext {
         HTMLReducer.plainText(fromHTML: html)
     }
 
-    /// Build a conventional reply quote trailer ("On <date>, <sender> wrote:" plus
-    /// `>` prefixed lines).
-    ///
-    /// STUB (DESIGN.md step 3): returns an empty string until implemented.
+    /// Build a conventional reply quote trailer for one quoted message: its
+    /// attribution line ("On <date>, at <time>, <sender> wrote:"), a blank line,
+    /// then `body` with every line prefixed `> `. Pass `date: nil` to drop the
+    /// "On …" clause, leaving "<sender> wrote:". `sender` is the already-formatted
+    /// display string; an empty `body` yields just the attribution.
     public static func replyQuoteTrailer(
         body: String,
         from sender: String,
-        date: Date,
+        date: Date?,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
-        ""
+        ReplyTrailer.build(body: body, sender: sender, date: date, locale: locale, timeZone: timeZone)
     }
 }
 

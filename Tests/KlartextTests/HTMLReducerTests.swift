@@ -91,6 +91,15 @@ struct HTMLReducerTests {
         #expect(reduce("<p>A</p><br><br><br><p>B</p>") == "A\n\nB")
     }
 
+    @Test("Whitespace between block elements reads as a paragraph gap")
+    func interBlockWhitespace() {
+        // Source newlines between two <div>s survive as one blank line, capped;
+        // trailing runs of spaces collapse. (Matches the behavior Zirbe's HTMLText
+        // had, so the engine swap there is like-for-like.)
+        #expect(reduce("<div>one</div>\n\n\n\n<div>two</div>    trailing   spaces")
+                == "one\n\ntwo\ntrailing spaces")
+    }
+
     @Test("Empty and whitespace-only markup reduce to empty")
     func emptyBody() {
         #expect(reduce("") == "")
