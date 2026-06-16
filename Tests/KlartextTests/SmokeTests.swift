@@ -3,9 +3,8 @@
 // Built with AI assistance (Claude, Anthropic)
 //
 // Proves the package builds, the public surface is reachable, and the concrete
-// data types behave. The algorithmic methods are stubs at this step, so this
-// asserts only their shape, not parsing behavior; the golden corpus suite lands
-// with each algorithm in later steps.
+// data types behave. Parsing behavior proper lives in the dedicated suites
+// (HTMLReducerTests, SeamTests); this stays a thin reachability check.
 
 import Testing
 @testable import Klartext
@@ -37,8 +36,8 @@ struct SmokeTests {
         #expect([logo].hasUserFacing == false)
     }
 
-    @Test("parse returns the body as visible until seam detection lands")
-    func parseStubShape() {
+    @Test("parse of an unquoted body returns it whole as visible")
+    func parseUnquoted() {
         let parsed = Klartext.parse(plainText: "just text")
         #expect(parsed.sourceFormat == .plainText)
         #expect(parsed.visible == "just text")

@@ -1,0 +1,8 @@
+Approved on my end. Please loop in procurement before you send the PO.
+
+From: Marcus Lindqvist <marcus@example.com>
+Sent: Tuesday, June 10, 2026 9:02 AM
+To: David Anderson <david@example.com>
+Subject: RE: Vendor PO for the migration tranche
+
+David, the vendor confirmed the discounted rate holds through end of quarter. Want to lock it in?

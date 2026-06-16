@@ -27,7 +27,9 @@ enum HTMLReducer {
     ]
 
     /// Whole subtrees that never contribute visible text; dropped before walking.
-    private static let droppedSelector = "script, style, head, title, noscript"
+    /// Internal so the seam splitter can drop the same subtrees before it slices
+    /// the DOM into visible and quoted halves.
+    static let droppedSelector = "script, style, head, title, noscript"
 
     static func plainText(fromHTML html: String) -> String {
         guard let document = try? SwiftSoup.parse(html) else {
@@ -41,31 +43,48 @@ enum HTMLReducer {
         return tidy(out)
     }
 
-    /// Depth-first walk: text nodes contribute their (entity-decoded) text with
-    /// HTML whitespace collapsed; block elements bracket their content in
-    /// newlines; `<br>`/`<hr>` emit a single break; inline elements just recurse.
+    /// Reduce a flat list of sibling nodes (a slice of one parent's children) to
+    /// text with the same rules as a full body. The seam splitter renders the
+    /// visible and quoted halves through this so both sides read identically to a
+    /// standalone reduction.
+    static func renderNodes(_ nodes: [Node]) -> String {
+        var out = ""
+        for node in nodes {
+            renderNode(node, into: &out)
+        }
+        return tidy(out)
+    }
+
+    /// Depth-first walk of a node's children.
     private static func render(_ node: Node, into out: inout String) {
         for child in node.getChildNodes() {
-            if let text = child as? TextNode {
-                out += collapseWhitespace(text.getWholeText())
-            } else if let element = child as? Element {
-                let tag = element.tagName().lowercased()
-                switch tag {
-                case "br":
-                    out += "\n"
-                case "hr":
+            renderNode(child, into: &out)
+        }
+    }
+
+    /// Render one node: text nodes contribute their (entity-decoded) text with
+    /// HTML whitespace collapsed; block elements bracket their content in
+    /// newlines; `<br>`/`<hr>` emit a single break; inline elements just recurse.
+    /// Comments, data, and other node kinds carry no visible text.
+    private static func renderNode(_ child: Node, into out: inout String) {
+        if let text = child as? TextNode {
+            out += collapseWhitespace(text.getWholeText())
+        } else if let element = child as? Element {
+            let tag = element.tagName().lowercased()
+            switch tag {
+            case "br":
+                out += "\n"
+            case "hr":
+                ensureNewline(&out)
+            default:
+                if blockTags.contains(tag) {
                     ensureNewline(&out)
-                default:
-                    if blockTags.contains(tag) {
-                        ensureNewline(&out)
-                        render(element, into: &out)
-                        ensureNewline(&out)
-                    } else {
-                        render(element, into: &out)
-                    }
+                    render(element, into: &out)
+                    ensureNewline(&out)
+                } else {
+                    render(element, into: &out)
                 }
             }
-            // Comments, data, and other node kinds carry no visible text.
         }
     }
 

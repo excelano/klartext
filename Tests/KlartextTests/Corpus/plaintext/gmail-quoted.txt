@@ -1,0 +1,10 @@
+Yes, ship it. One nit: rename the column header to "Tier" so it matches the rubric.
+
+On Mon, Jun 9, 2026 at 3:14 PM Jane Okonkwo <jane@example.com> wrote:
+> Hi team,
+>
+> Attaching the Q3 portfolio draft. Open question on slide 6: do we keep
+> the legacy column or fold it into the new rating? Let me know.
+>
+> Best,
+> Jane

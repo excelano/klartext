@@ -15,19 +15,26 @@ public enum Klartext {
     /// on hand; HTML is preferred when present because container based quote
     /// detection beats text heuristics.
     ///
-    /// STUB (DESIGN.md step 3): seam detection is not implemented yet. For now it
-    /// returns the whole body as `visible` with no quoted split, so callers can
-    /// integrate against the shape while the logic lands.
+    /// Seam detection splits `visible` (the new message) from `quoted` (the history
+    /// below it). For HTML it first looks for a quote container; finding none it
+    /// reduces to text and runs the text markers, so top posted mail with no
+    /// container still folds. Signature separation and attachment classification
+    /// are layered on in later build steps.
     public static func parse(
         plainText: String? = nil,
         html: String? = nil,
         attachments: [RawAttachmentInput] = [],
         options: Options = .init()
     ) -> ParsedBody {
-        if let html {
-            return ParsedBody(visible: Self.plainText(fromHTML: html), sourceFormat: .html)
+        if let html, !html.isEmpty {
+            if let split = HTMLSeam.split(html: html) {
+                return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .html)
+            }
+            let split = TextSeam.split(Self.plainText(fromHTML: html), options: options)
+            return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .html)
         }
-        return ParsedBody(visible: plainText ?? "", sourceFormat: .plainText)
+        let split = TextSeam.split(plainText ?? "", options: options)
+        return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .plainText)
     }
 
     /// Reduce HTML to readable plain text: block aware line breaks, entities
