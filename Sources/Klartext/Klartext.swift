@@ -18,23 +18,28 @@ public enum Klartext {
     /// Seam detection splits `visible` (the new message) from `quoted` (the history
     /// below it). For HTML it first looks for a quote container; finding none it
     /// reduces to text and runs the text markers, so top posted mail with no
-    /// container still folds. Signature separation and attachment classification
-    /// are layered on in later build steps.
+    /// container still folds. With `Options.separateSignature` on (the default), a
+    /// trailing signature is then split off `visible` into `signature`. Attachment
+    /// classification is layered on in a later build step.
     public static func parse(
         plainText: String? = nil,
         html: String? = nil,
         attachments: [RawAttachmentInput] = [],
         options: Options = .init()
     ) -> ParsedBody {
+        let format: BodyFormat
+        let seam: (visible: String, quoted: String?)
         if let html, !html.isEmpty {
-            if let split = HTMLSeam.split(html: html) {
-                return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .html)
-            }
-            let split = TextSeam.split(Self.plainText(fromHTML: html), options: options)
-            return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .html)
+            format = .html
+            seam = HTMLSeam.split(html: html)
+                ?? TextSeam.split(Self.plainText(fromHTML: html), options: options)
+        } else {
+            format = .plainText
+            seam = TextSeam.split(plainText ?? "", options: options)
         }
-        let split = TextSeam.split(plainText ?? "", options: options)
-        return ParsedBody(visible: split.visible, quoted: split.quoted, sourceFormat: .plainText)
+
+        let (body, signature) = Signature.separate(seam.visible, options: options)
+        return ParsedBody(visible: body, quoted: seam.quoted, signature: signature, sourceFormat: format)
     }
 
     /// Reduce HTML to readable plain text: block aware line breaks, entities
@@ -61,12 +66,11 @@ public enum Klartext {
 
 public extension ParsedBody {
     /// An aggressively cleaned single glance preview of the new content:
-    /// salutation, signature, and trailing valediction removed. Lossy by design.
-    ///
-    /// STUB (DESIGN.md step 4): returns `visible`, optionally truncated, until the
-    /// glance cleanup lands.
+    /// salutation, leftover signature, and trailing valediction removed, image
+    /// placeholders dropped, optionally bounded to `maxLength` on a word boundary.
+    /// Lossy by design — the full `visible` and `quoted` stay available for "show
+    /// full message", so a wrong cut here is recoverable.
     func preview(maxLength: Int? = nil) -> String {
-        guard let maxLength, visible.count > maxLength else { return visible }
-        return String(visible.prefix(maxLength))
+        Preview.glance(visible, maxLength: maxLength)
     }
 }
