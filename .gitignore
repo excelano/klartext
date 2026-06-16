@@ -1,0 +1,8 @@
+.DS_Store
+/.build
+/.swiftpm
+# Library: consumers resolve their own versions, so the lockfile isn't tracked.
+/Package.resolved
+/Packages
+xcuserdata/
+*.xcodeproj
