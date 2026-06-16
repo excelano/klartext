@@ -42,9 +42,10 @@ enum TextSeam {
 
     /// The index of the first line that begins the quoted history, or nil if the
     /// body carries none. Recognizes a `>`-quoted line, an Outlook
-    /// "From:/Sent:/To:/Subject:" header block, the Outlook "Original Message" and
-    /// Apple "Begin forwarded message:" separators, and an attribution line ending
-    /// in "wrote:", whichever comes first.
+    /// "From:/Sent:/To:/Subject:" header block, the dashed "Original Message" /
+    /// "Forwarded message" separators (Outlook and Gmail/Outlook-web), the Apple
+    /// "Begin forwarded message:" line, and an attribution line ending in
+    /// "wrote:", whichever comes first.
     private static func boundaryIndex(in lines: [String], maxScanLines: Int?) -> Int? {
         let limit = maxScanLines.map { min($0, lines.count) } ?? lines.count
         for index in 0..<limit {
@@ -77,8 +78,13 @@ enum TextSeam {
         return lines[start].trimmingCharacters(in: .whitespaces).hasPrefix("On ") ? start : index
     }
 
+    /// A dashed separator line fencing off forwarded or original content:
+    /// Outlook's "-----Original Message-----" and the Gmail/Outlook-web
+    /// "---------- Forwarded message ----------" (dash counts vary; trailing
+    /// dashes optional, since some clients omit them). Also the Apple Mail
+    /// "Begin forwarded message:" line, which carries no dashes.
     private static func isForwardOrOriginalMarker(_ line: String) -> Bool {
-        line.range(of: #"^-{2,}\s*Original Message\s*-{2,}$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        line.range(of: #"^-{2,}\s*(Original Message|Forwarded message)\s*-*$"#, options: [.regularExpression, .caseInsensitive]) != nil
             || line.caseInsensitiveCompare("Begin forwarded message:") == .orderedSame
     }
 

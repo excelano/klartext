@@ -62,6 +62,22 @@ struct TextSeamTests {
         #expect(parsed.quoted?.hasPrefix("Begin forwarded message:") == true)
     }
 
+    @Test("`---------- Forwarded message ----------` is the seam (Gmail/Outlook-web)")
+    func gmailForwardedMarker() {
+        let body = "FYI, see below.\n\n---------- Forwarded message ----------\nFrom: Alice <a@x.com>\nSubject: Q3"
+        let parsed = Klartext.parse(plainText: body)
+        #expect(parsed.visible == "FYI, see below.")
+        #expect(parsed.quoted?.hasPrefix("---------- Forwarded message ----------") == true)
+    }
+
+    @Test("A bare Gmail/Outlook-web forward with no cover note leaves visible empty")
+    func bareGmailForward() {
+        let body = "---------- Forwarded message ----------\nFrom: Alice <a@x.com>\nSubject: Q3\n\nThe actual content."
+        let parsed = Klartext.parse(plainText: body)
+        #expect(parsed.visible.isEmpty)
+        #expect(parsed.quoted?.hasPrefix("---------- Forwarded message ----------") == true)
+    }
+
     @Test("An Outlook From:/Sent:/To: header block is the seam (Zirbe's cross-gain)")
     func outlookHeaderBlock() {
         let body = """
