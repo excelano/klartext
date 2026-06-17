@@ -10,7 +10,12 @@ The name is the German word for plain text, and idiomatically for plain speaking
 what the package does: it takes messy HTML and quoted clutter and returns the clear version
 of the message. It sits beside Blick and Zirbe as a short German noun.
 
-This document is the design only. No code has been written yet.
+This document is the original design for the **Klartext** content-parsing core, which is now
+built and shipped (tagged releases through `v0.3.1`). Sections 1 through 11 describe that core
+and remain accurate for it. A second product, **KlartextUI**, was added later: an iOS-only
+rendering layer that turns a parsed body into drop-in SwiftUI views. It deliberately supersedes
+the original "Klartext does not render" scope. Section 12 documents it, and the affected lines
+below carry a pointer to it.
 
 ---
 
@@ -330,9 +335,12 @@ reaches M365 or Google, the shareable thing becomes Blick's Graph client, and th
 its own shared package governed by the same two consumer rule. Content and transport stay
 distinct modules. Design for it; do not build it now.
 
-The **HTML render view** (WKWebView) stays Zirbe's. Klartext does not render. Revisit only if
+The **HTML render view** (WKWebView) stays Zirbe's. Klartext does not render. ~~Revisit only if
 Blick decides to show formatted HTML, which is a real product step separate from fixing
-truncation.
+truncation.~~ **Superseded (see section 12): this scope was reversed. Both apps need faithful
+HTML rendering, and re-deriving it in each is the exact duplication Klartext exists to kill, so
+rendering moved into the new KlartextUI product. The Klartext content core still renders nothing;
+the package now also ships a rendering layer beside it.**
 
 **Thread and conversation context** in Blick is a Graph feature, not a Klartext concern.
 
@@ -350,3 +358,113 @@ New Swift files in the Klartext repo carry the standard header (file name, `// A
 M. Anderson`, `// Built with AI assistance (Claude, Anthropic)`). Commits use the
 `Co-Authored-By: Claude <noreply@anthropic.com>` trailer and David's git identity. Releases
 are tagged `vMAJOR.MINOR.PATCH`; both apps pin to a tag.
+
+---
+
+## 12. KlartextUI — the rendering layer
+
+The original design drew the line at content and declared rendering out of scope: each app
+would keep its own WKWebView. That was backwards. Sharing the easy part (flattening HTML to
+text) while leaving the hard part (rendering an HTML email faithfully) duplicated in both apps
+is the precise duplication this package exists to remove, and the existing render view had a
+real gap: it did not resolve `cid:` inline images, so embedded logos and signature graphics
+rendered blank. So a second product owns rendering.
+
+**The principle.** Klartext owns faithful content rendering in a drop-in SwiftUI view; the
+consuming app owns all chrome around it. The view renders the email the way the sender intended
+(their design, app neutral); the bubble, sheet, and navigation stay the app's identity. An app
+fetches the email through its own transport, hands the toolkit a structured `EmailContent`, and
+gets back SwiftUI views it drops in.
+
+**Shape.** KlartextUI is a second SPM product in the same package and repo (one repo, one
+version), depending on `Klartext` plus WebKit and SwiftUI, never on SwiftSoup. SPM platforms are
+package wide, so every KlartextUI source is wrapped in `#if canImport(UIKit)` and compiles to
+empty on the macOS slice that `swift test` uses; the core stays cross platform and the parsing
+tests are untouched. KlartextUI is verified against real mail through the harness app on the iOS
+simulator, not through `swift test`. The SwiftSoup encapsulation rule is preserved in full: the
+UI lives in its own target and never imports WebKit into the core or SwiftSoup into the UI.
+
+### Public surface
+
+```swift
+// What the app fills from its own transport (Graph parts, the MIME tree, etc.).
+public struct EmailPart {
+    public var filename: String?
+    public var mimeType: String
+    public var contentID: String?
+    public var disposition: Disposition   // reuses Klartext's Disposition
+    public var data: Data?                 // part bytes, needed to paint cid: inline images
+}
+
+public struct EmailContent {
+    public var html: String?
+    public var plainText: String?
+    public var parts: [EmailPart]
+    /// Map onto Klartext's parser (drops the bytes; keeps sizes) and parse.
+    public func parsed(options: Options = .init()) -> ParsedBody
+}
+
+// The faithful rich render.
+public struct EmailHTMLView: UIViewRepresentable {
+    public init(content: EmailContent, allowRemoteContent: Bool = false)
+}
+
+// The compact native render.
+public struct EmailTextView: View {
+    public init(content: EmailContent, options: Options = .init())
+}
+```
+
+`EmailContent` is the single hand-off type. It carries part bytes, which the Klartext content
+model deliberately omits, because painting a `cid:` inline image needs them; `parsed()` drops the
+bytes back to sizes when it calls `Klartext.parse`. KlartextUI does `@_exported import Klartext`,
+so a consumer writes only `import KlartextUI` and still sees `ParsedBody`, `Disposition`, and the
+rest.
+
+### EmailHTMLView
+
+The rich path, a `UIViewRepresentable` over `WKWebView`. It renders force light (a white canvas,
+`overrideUserInterfaceStyle = .light`, injected `color-scheme: light`), because dark mode
+inversion breaks branded mail; injects a viewport and fits content to width; and routes link taps
+out to the system browser rather than navigating in place. Its new capability over the old view is
+a `cid:` scheme handler (`WKURLSchemeHandler`) that serves inline image bytes from
+`EmailContent.parts` on the device, so embedded logos and signature graphics paint instead of
+showing a broken box. The handler is built on a fresh configuration per `makeUIView`, registered
+before the web view exists, and retained on the coordinator; the call site keys the view identity
+on the message so SwiftUI rebuilds it on message change.
+
+Remote resources are blocked by default through a `WKContentRuleList` matching `^https?://`, and
+`allowRemoteContent` opts in. This is a privacy gate, not a convenience toggle: remote images are
+tracking pixels and a new external destination, so loading them is the consumer's explicit choice.
+The `cid:` bytes correctly bypass the block because they are on device bytes from the
+already fetched message, not a network fetch, so they introduce no new destination. The package
+still never fetches the email itself; transport stays per app, exactly as section 1 requires.
+
+### EmailTextView
+
+The compact path, pure SwiftUI over `content.parsed()`: the `visible` content shown and
+selectable, the `quoted` history folded behind a disclosure, and any separated `signature`
+rendered subdued. This is the chat or glance shape, the native counterpart to the web render.
+Signature separation follows the conservative core rules unchanged (the `-- ` delimiter and known
+mobile footers only), so an Outlook desktop contact block stays in the body rather than risk
+folding a real sentence.
+
+### The harness
+
+`Harness/` is a bare-bones IMAP email reader whose only purpose is to exercise these views against
+real mail on the simulator. It is a standalone Xcode application, not part of the Swift package: it
+depends on SwiftMail for IMAP, and that dependency lives inside the generated Xcode project, never
+in `Package.swift`, so the package's dependency graph stays SwiftSoup only and a consumer never
+resolves SwiftMail. The project is produced by `Harness/generate_project.rb` and gitignored along
+with its build output; the generator, the Swift sources, and a README are what the repo tracks, in
+the spirit of a Tuist or XcodeGen spec. Credentials are held in memory for the session only and
+never written to disk. See `Harness/README.md`.
+
+### Status and what is left
+
+Built and verified on the simulator: force light render, the remote image gate, the `cid:` inline
+image (an Outlook signature logo paints with remote images off), and the native text fold with a
+subdued signature. The two consume passes are deliberately separate follow ups, each in its own
+thread: Zirbe repoints its Web View at `EmailHTMLView` and deletes its `HTMLWebView`, and Blick
+renders its sheet through the same view. Those threads consume KlartextUI; they do not modify it.
+This code belongs to Klartext.
