@@ -83,7 +83,9 @@ enum TextSeam {
     /// "---------- Forwarded message ----------" (dash counts vary; trailing
     /// dashes optional, since some clients omit them). Also the Apple Mail
     /// "Begin forwarded message:" line, which carries no dashes.
-    private static func isForwardOrOriginalMarker(_ line: String) -> Bool {
+    /// Internal so HTMLSeam can fold the same forward chrome into the quoted side
+    /// when a container split leaves it stranded above the seam.
+    static func isForwardOrOriginalMarker(_ line: String) -> Bool {
         line.range(of: #"^-{2,}\s*(Original Message|Forwarded message)\s*-*$"#, options: [.regularExpression, .caseInsensitive]) != nil
             || line.caseInsensitiveCompare("Begin forwarded message:") == .orderedSame
     }

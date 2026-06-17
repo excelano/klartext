@@ -191,6 +191,35 @@ struct HTMLSeamTests {
         #expect(parsed.quoted == "The original message body.")
     }
 
+    @Test("A bare HTML forward folds 'Begin forwarded message:' chrome into quoted (empty visible)")
+    func htmlBareForwardChrome() {
+        // Apple Mail's shape for a forward with no cover note: the marker sits in
+        // a div above the cite blockquote. Without folding it, the marker strands
+        // as the "new message" and the forwarded content hides behind the fold.
+        let html = """
+        <div></div>
+        <div><br>Begin forwarded message:<br></div>
+        <blockquote type="cite"><div><b>From:</b> Alice<br><b>Subject:</b> Hi</div></blockquote>
+        <blockquote type="cite"><div>The forwarded content.</div></blockquote>
+        """
+        let parsed = Klartext.parse(html: html)
+        #expect(parsed.visible.isEmpty)
+        #expect(parsed.quoted?.contains("Begin forwarded message:") == true)
+        #expect(parsed.quoted?.contains("The forwarded content.") == true)
+    }
+
+    @Test("A real cover note above an HTML forward stays visible")
+    func htmlForwardWithCoverNote() {
+        let html = """
+        <div>Please review.</div>
+        <div>Begin forwarded message:</div>
+        <blockquote type="cite"><div>The forwarded content.</div></blockquote>
+        """
+        let parsed = Klartext.parse(html: html)
+        #expect(parsed.visible == "Please review.")
+        #expect(parsed.quoted?.contains("Begin forwarded message:") == true)
+    }
+
     @Test("Thunderbird's moz-cite-prefix attribution opens the quote")
     func thunderbirdMozCite() {
         let html = """

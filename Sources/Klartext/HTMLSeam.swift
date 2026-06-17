@@ -29,11 +29,34 @@ enum HTMLSeam {
         guard let block = seamBlock(in: document, root: root) else { return nil }
 
         let nodes = root.getChildNodes()
-        guard let index = nodes.firstIndex(where: { $0 === block }) else { return nil }
+        guard let blockIndex = nodes.firstIndex(where: { $0 === block }) else { return nil }
+
+        // Absorb forward chrome stranded above the container into the quoted
+        // side: a node that reduces to nothing (empty/`<br>`-only) or to a bare
+        // forward marker ("Begin forwarded message:", "----- Forwarded message
+        // -----"). The text path already treats that marker as the seam, so this
+        // keeps the two consistent — a bare forward (no cover note) yields empty
+        // `visible` instead of stranding the marker line as the "new message."
+        var index = blockIndex
+        while index > 0 {
+            let preceding = HTMLReducer.renderNodes([nodes[index - 1]])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard preceding.isEmpty || isForwardChrome(preceding) else { break }
+            index -= 1
+        }
 
         let visible = HTMLReducer.renderNodes(Array(nodes[..<index]))
         let quoted = HTMLReducer.renderNodes(Array(nodes[index...]))
         return (visible, quoted.isEmpty ? nil : quoted)
+    }
+
+    /// True when every non-empty line of `text` is a forward/original marker, so
+    /// the whole node is forward chrome rather than the sender's own content.
+    private static func isForwardChrome(_ text: String) -> Bool {
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return false }
+        return lines.allSatisfy(TextSeam.isForwardOrOriginalMarker)
     }
 
     /// Quote-container selectors, in no priority order — the earliest match in
