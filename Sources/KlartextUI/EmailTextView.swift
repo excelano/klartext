@@ -26,30 +26,41 @@ public struct EmailTextView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(parsed.visible)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let visible = parsed.visible.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quoted = parsed.quoted?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasQuoted = !(quoted?.isEmpty ?? true)
 
-            if let quoted = parsed.quoted, !quoted.isEmpty {
-                DisclosureGroup("Show quoted text", isExpanded: $showQuoted) {
-                    Text(quoted)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 4)
+        VStack(alignment: .leading, spacing: 12) {
+            if !visible.isEmpty {
+                bodyText(visible)
+
+                if hasQuoted {
+                    DisclosureGroup("Show quoted text", isExpanded: $showQuoted) {
+                        bodyText(quoted!)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                    .font(.footnote)
                 }
-                .font(.footnote)
+            } else if hasQuoted {
+                // Bare forward: the sender wrote nothing of their own, so the
+                // quoted content is the whole message. Render it directly rather
+                // than hiding the only content behind the disclosure.
+                bodyText(quoted!)
             }
 
             if let signature = parsed.signature, !signature.isEmpty {
-                Text(signature)
-                    .textSelection(.enabled)
+                bodyText(signature)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func bodyText(_ text: String) -> some View {
+        Text(text)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
