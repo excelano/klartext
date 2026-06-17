@@ -43,8 +43,10 @@ enum AttachmentClassifier {
         pattern: #"cid:([^"'()\s<>]+)"#, options: .caseInsensitive)
 
     /// The set of Content-IDs the HTML actually references, normalized for
-    /// comparison against the parts' own ids.
-    private static func referencedContentIDs(_ html: String) -> Set<String> {
+    /// comparison against the parts' own ids. Internal so the public
+    /// `Klartext.referencedContentIDs(inHTML:)` transport entry point shares this
+    /// one implementation rather than a second copy drifting in a consumer.
+    static func referencedContentIDs(_ html: String) -> Set<String> {
         guard let cidReference else { return [] }
         let range = NSRange(html.startIndex..., in: html)
         var found: Set<String> = []
@@ -58,8 +60,9 @@ enum AttachmentClassifier {
 
     /// A part's Content-ID arrives wrapped in angle brackets (`<id@host>`) while the
     /// `cid:` URL carries the bare token; lowercasing and stripping the brackets and
-    /// surrounding whitespace lets the two compare.
-    private static func normalize(_ contentID: String) -> String {
+    /// surrounding whitespace lets the two compare. Internal so the public
+    /// `Klartext.normalizeContentID(_:)` shares it (single matching rule).
+    static func normalize(_ contentID: String) -> String {
         contentID
             .trimmingCharacters(in: CharacterSet(charactersIn: "<> \t"))
             .lowercased()

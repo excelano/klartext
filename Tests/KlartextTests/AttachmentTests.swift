@@ -93,4 +93,37 @@ struct AttachmentTests {
         #expect(parsed.attachments.userFacing.map(\.filename) == ["Q3.xlsx"])
         #expect(parsed.attachments.hasUserFacing)
     }
+
+    // The transport-facing entry points a consumer uses to decide which inline
+    // parts to fetch before downloading any bytes. They share the cid join's
+    // matching rule, so a part membership test here must agree with classify().
+
+    @Test("referencedContentIDs collects every cid: token, normalized")
+    func referencedContentIDsPublicAPI() {
+        let html = #"""
+        <p>See chart:</p><img src="cid:Chart@X">
+        <div style="background:url(cid:bg@x)">hi</div>
+        """#
+        #expect(Klartext.referencedContentIDs(inHTML: html) == ["chart@x", "bg@x"])
+    }
+
+    @Test("normalizeContentID strips the brackets and lowercases for membership")
+    func normalizeContentIDPublicAPI() {
+        let referenced = Klartext.referencedContentIDs(inHTML: #"<img src="cid:image001@01D8">"#)
+        #expect(Klartext.normalizeContentID("<image001@01D8>") == "image001@01d8")
+        #expect(referenced.contains(Klartext.normalizeContentID("<image001@01D8>")))
+    }
+
+    @Test("The public API agrees with classify() on the same message")
+    func publicAPIAgreesWithClassify() {
+        let html = #"<p>x</p><img src="cid:logo@x">"#
+        let logo = input("logo.png", "image/png", cid: "<logo@x>", .inline)
+        // What classify() decides is inline...
+        let classified = Klartext.parse(html: html, attachments: [logo]).attachments.first
+        // ...must match what the transport-facing pair would pre-select.
+        let referenced = Klartext.referencedContentIDs(inHTML: html)
+        let preSelected = referenced.contains(Klartext.normalizeContentID("<logo@x>"))
+        #expect(classified?.isTrulyInline == preSelected)
+        #expect(preSelected)
+    }
 }

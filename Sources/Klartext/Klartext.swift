@@ -70,6 +70,21 @@ public enum Klartext {
     ) -> String {
         ReplyTrailer.build(body: body, sender: sender, date: date, locale: locale, timeZone: timeZone)
     }
+
+    /// The set of Content-IDs an HTML body references via `cid:` URLs, normalized
+    /// (angle brackets and surrounding whitespace stripped, lowercased) so they
+    /// compare directly against a MIME part's own `<id@host>` Content-ID. Lets a
+    /// transport decide which inline parts to fetch before downloading any bytes,
+    /// using the same matching rule the attachment cid join already trusts.
+    public static func referencedContentIDs(inHTML html: String) -> Set<String> {
+        AttachmentClassifier.referencedContentIDs(html)
+    }
+
+    /// Normalize one Content-ID the same way, so a caller holding a part's raw
+    /// `<id@host>` can test membership in the set above.
+    public static func normalizeContentID(_ contentID: String) -> String {
+        AttachmentClassifier.normalize(contentID)
+    }
 }
 
 public extension ParsedBody {
