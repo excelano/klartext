@@ -9,7 +9,10 @@
 //
 // Styling is intentionally minimal so the host app's font and foreground styling
 // flow through unchanged — the toolkit renders the content, the app owns the
-// chrome.
+// chrome. The new content (`visible`) inherits the host's font and color whole.
+// The quoted history and signature default to a subdued foreground so they read
+// as secondary with zero configuration; a host that wants its own muted color
+// (e.g. a brand tint rather than system gray) passes `subduedStyle`.
 
 #if canImport(UIKit)
 
@@ -18,11 +21,20 @@ import Klartext
 
 public struct EmailTextView: View {
     private let parsed: ParsedBody
+    private let subduedStyle: AnyShapeStyle
     @State private var showQuoted = false
 
-    public init(content: EmailContent, options: Options = .init()) {
+    /// - Parameter subduedStyle: the foreground style for the quoted history and
+    ///   signature, which read as secondary to the new content. Defaults to the
+    ///   system `.secondary` hierarchy; pass a brand muted color to override.
+    public init(
+        content: EmailContent,
+        options: Options = .init(),
+        subduedStyle: some ShapeStyle = HierarchicalShapeStyle.secondary
+    ) {
         // Parse once at init: the parse is pure and the body may re-evaluate.
         self.parsed = content.parsed(options: options)
+        self.subduedStyle = AnyShapeStyle(subduedStyle)
     }
 
     public var body: some View {
@@ -37,7 +49,7 @@ public struct EmailTextView: View {
                 if hasQuoted {
                     DisclosureGroup("Show quoted text", isExpanded: $showQuoted) {
                         bodyText(quoted!)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(subduedStyle)
                             .padding(.top, 4)
                     }
                     .font(.footnote)
@@ -52,7 +64,7 @@ public struct EmailTextView: View {
             if let signature = parsed.signature, !signature.isEmpty {
                 bodyText(signature)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(subduedStyle)
             }
         }
     }
