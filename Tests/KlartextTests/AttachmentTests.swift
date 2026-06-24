@@ -127,3 +127,50 @@ struct AttachmentTests {
         #expect(preSelected)
     }
 }
+
+// The pure image predicate a consumer uses for non-email transports (a Teams
+// chat attachment that never becomes an EmailContent), so the canonical image
+// extension set lives here once instead of drifting in each app.
+@Suite("Image classification")
+struct ImageClassificationTests {
+
+    @Test("An image/* MIME type is an image regardless of filename")
+    func mimePrefixWins() {
+        #expect(Klartext.isImageAttachment(mimeType: "image/png", filename: nil))
+        #expect(Klartext.isImageAttachment(mimeType: "image/jpeg", filename: "noextension"))
+        #expect(Klartext.isImageAttachment(mimeType: "image/heic", filename: "weird.dat"))
+    }
+
+    @Test("The MIME prefix test is case- and whitespace-insensitive")
+    func mimePrefixNormalized() {
+        #expect(Klartext.isImageAttachment(mimeType: "IMAGE/PNG", filename: nil))
+        #expect(Klartext.isImageAttachment(mimeType: "  image/gif  ", filename: nil))
+    }
+
+    @Test("A generic or absent MIME type falls back to the filename extension")
+    func extensionFallback() {
+        // Exactly the chat case: transport reports octet-stream, name carries it.
+        #expect(Klartext.isImageAttachment(mimeType: "application/octet-stream", filename: "photo.png"))
+        #expect(Klartext.isImageAttachment(mimeType: nil, filename: "scan.HEIC"))
+    }
+
+    @Test("Both .tif and .tiff are recognized (the drift bug this prevents)")
+    func tifAndTiff() {
+        #expect(Klartext.isImageAttachment(mimeType: nil, filename: "fax.tif"))
+        #expect(Klartext.isImageAttachment(mimeType: nil, filename: "fax.tiff"))
+    }
+
+    @Test("A non-image part is not an image by MIME or by extension")
+    func notAnImage() {
+        #expect(!Klartext.isImageAttachment(mimeType: "application/pdf", filename: "report.pdf"))
+        #expect(!Klartext.isImageAttachment(mimeType: "text/calendar", filename: "invite.ics"))
+        #expect(!Klartext.isImageAttachment(mimeType: nil, filename: "archive.zip"))
+    }
+
+    @Test("Both arguments nil, or a name with no extension, is not an image")
+    func emptyInputs() {
+        #expect(!Klartext.isImageAttachment(mimeType: nil, filename: nil))
+        #expect(!Klartext.isImageAttachment(mimeType: nil, filename: "README"))
+        #expect(!Klartext.isImageAttachment(mimeType: nil, filename: ""))
+    }
+}

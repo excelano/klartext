@@ -85,6 +85,18 @@ public enum Klartext {
     public static func normalizeContentID(_ contentID: String) -> String {
         AttachmentClassifier.normalize(contentID)
     }
+
+    /// True when an attachment is an image, judged from its MIME type and/or
+    /// filename. Pure: performs no I/O and no HTML parse. For callers holding
+    /// attachment metadata outside an email (a chat transport whose parts never
+    /// become an `EmailContent`) that can't go through `parse()` and would
+    /// otherwise hand-roll an extension list that drifts from this one.
+    ///
+    /// Rule: an `image/*` MIME type wins; otherwise a known image filename
+    /// extension. Either argument may be nil.
+    public static func isImageAttachment(mimeType: String?, filename: String?) -> Bool {
+        AttachmentClassifier.isImage(mimeType: mimeType, filename: filename)
+    }
 }
 
 public extension ParsedBody {

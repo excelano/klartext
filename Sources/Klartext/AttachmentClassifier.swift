@@ -67,4 +67,30 @@ enum AttachmentClassifier {
             .trimmingCharacters(in: CharacterSet(charactersIn: "<> \t"))
             .lowercased()
     }
+
+    /// The canonical image filename extensions. This is the fallback test only:
+    /// the `image/*` MIME prefix is the primary, authoritative signal, and this
+    /// list exists to catch parts whose transport left the type generic or absent
+    /// (a chat attachment reported as `application/octet-stream`, say). Kept here
+    /// so the set is defined exactly once for every consumer.
+    private static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "jfif", "gif", "bmp",
+        "tif", "tiff", "heic", "heif", "webp", "avif", "svg",
+    ]
+
+    /// True when a part is an image, judged from its MIME type and/or filename.
+    /// An `image/*` MIME type wins; otherwise a known image filename extension.
+    /// Pure — no I/O, no HTML parse. Internal canonical implementation behind the
+    /// public `Klartext.isImageAttachment(mimeType:filename:)`, so a non-email
+    /// transport (a chat message that never becomes an `EmailContent`) shares the
+    /// one extension set instead of hand-rolling a list that drifts.
+    static func isImage(mimeType: String?, filename: String?) -> Bool {
+        if let mimeType,
+           mimeType.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("image/") {
+            return true
+        }
+        guard let filename else { return false }
+        let ext = (filename as NSString).pathExtension.lowercased()
+        return !ext.isEmpty && imageExtensions.contains(ext)
+    }
 }
