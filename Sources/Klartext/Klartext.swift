@@ -71,6 +71,32 @@ public enum Klartext {
         ReplyTrailer.build(body: body, sender: sender, date: date, locale: locale, timeZone: timeZone)
     }
 
+    /// Build a conventional forwarded-message block for one message: the
+    /// "Begin forwarded message:" marker, a From/Date/Subject/To/Cc header (each
+    /// line omitted when its field is absent), a blank line, then `body`
+    /// reproduced VERBATIM — not `> `-prefixed, the one structural difference from
+    /// `replyQuoteTrailer`. `sender` and the `to`/`cc` entries are already-formatted
+    /// display strings (multiple recipients are joined with ", "). `From` is always
+    /// emitted, so pass a fallback label for a message with no sender; `date: nil`,
+    /// an empty/nil `subject`, and an empty `to`/`cc` each drop their line. An empty
+    /// `body` yields just the marker + header. The date is stamped in Apple Mail's
+    /// forward-header style (long date + short time), not the reply trailer's. Does
+    /// not include any cover note — the consumer prepends that itself.
+    public static func forwardQuoteTrailer(
+        body: String,
+        from sender: String,
+        date: Date?,
+        subject: String?,
+        to: [String],
+        cc: [String],
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        ForwardTrailer.build(
+            body: body, sender: sender, date: date, subject: subject,
+            to: to, cc: cc, locale: locale, timeZone: timeZone)
+    }
+
     /// The set of Content-IDs an HTML body references via `cid:` URLs, normalized
     /// (angle brackets and surrounding whitespace stripped, lowercased) so they
     /// compare directly against a MIME part's own `<id@host>` Content-ID. Lets a
