@@ -26,19 +26,28 @@ public struct RawAttachmentInput: Sendable, Equatable {
     public var size: Int?
     public var contentID: String?
     public var disposition: Disposition
+    /// An opaque, transport-owned identifier the consumer can attach to correlate
+    /// the resolved `Attachment` back to its source for byte download. Klartext
+    /// stores and returns it untouched and never interprets it, so no transport
+    /// logic enters the package (DESIGN.md §Attachment model: byte download stays
+    /// in the app). Blick fills it with the Graph attachment id; nil when the
+    /// transport has nothing to correlate against.
+    public var sourceId: String?
 
     public init(
         filename: String?,
         mimeType: String,
         size: Int?,
         contentID: String?,
-        disposition: Disposition
+        disposition: Disposition,
+        sourceId: String? = nil
     ) {
         self.filename = filename
         self.mimeType = mimeType
         self.size = size
         self.contentID = contentID
         self.disposition = disposition
+        self.sourceId = sourceId
     }
 }
 
@@ -55,6 +64,10 @@ public struct Attachment: Sendable, Equatable, Identifiable {
     public var disposition: Disposition
     /// Content-ID referenced by a `cid:` in the HTML body. The accurate inline test.
     public var isTrulyInline: Bool
+    /// The opaque, transport-owned identifier carried through from
+    /// `RawAttachmentInput` untouched, so the app can correlate this attachment
+    /// back to its source for byte download. Klartext never interprets it.
+    public var sourceId: String?
 
     public init(
         id: String,
@@ -63,7 +76,8 @@ public struct Attachment: Sendable, Equatable, Identifiable {
         size: Int?,
         contentID: String?,
         disposition: Disposition,
-        isTrulyInline: Bool
+        isTrulyInline: Bool,
+        sourceId: String? = nil
     ) {
         self.id = id
         self.filename = filename
@@ -72,6 +86,7 @@ public struct Attachment: Sendable, Equatable, Identifiable {
         self.contentID = contentID
         self.disposition = disposition
         self.isTrulyInline = isTrulyInline
+        self.sourceId = sourceId
     }
 }
 

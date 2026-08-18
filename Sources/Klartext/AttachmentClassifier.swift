@@ -32,7 +32,8 @@ enum AttachmentClassifier {
                 size: input.size,
                 contentID: input.contentID,
                 disposition: input.disposition,
-                isTrulyInline: isTrulyInline
+                isTrulyInline: isTrulyInline,
+                sourceId: input.sourceId
             )
         }
     }

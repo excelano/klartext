@@ -81,6 +81,21 @@ struct AttachmentTests {
         #expect(parsed.attachments.first?.id == "klartext-attachment-0")
     }
 
+    @Test("sourceId rides through classify untouched, and defaults to nil")
+    func sourceIdPassthrough() {
+        // The consumer's transport id survives the parse so a tapped attachment
+        // can be correlated back to its source for byte download.
+        let tagged = RawAttachmentInput(
+            filename: "report.pdf", mimeType: "application/pdf", size: 4096,
+            contentID: nil, disposition: .attachment, sourceId: "graph-att-id-123")
+        let untagged = RawAttachmentInput(
+            filename: "notes.txt", mimeType: "text/plain", size: nil,
+            contentID: nil, disposition: .attachment)
+        let parsed = Klartext.parse(plainText: "body", attachments: [tagged, untagged])
+        #expect(parsed.attachments.first?.sourceId == "graph-att-id-123")
+        #expect(parsed.attachments.last?.sourceId == nil)
+    }
+
     @Test("A mixed set splits into the referenced logo and the real attachment")
     func mixedSet() {
         let html = #"<p>Quarterly numbers attached.</p><img src="cid:siglogo@x">"#

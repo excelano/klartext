@@ -152,6 +152,13 @@ Each app builds `RawAttachmentInput` values from its own transport (Graph JSON o
 tree). Klartext does the cid join against the HTML body and returns resolved `Attachment`
 values. Byte download stays in the app.
 
+Because byte download stays in the app, the app needs to correlate a resolved `Attachment`
+back to its transport identity to fetch it on demand. `sourceId` is that hook: an opaque
+token the app fills (Blick uses the Graph attachment id) that Klartext copies from input to
+output **untouched and never interprets**. It carries no transport logic into the package, so
+the boundary holds; it just spares every consumer the fragile `filename + mimeType` join that
+collides when a message carries two identically-named parts.
+
 ```swift
 public enum Disposition: Sendable { case inline, attachment, unknown }
 
@@ -161,8 +168,9 @@ public struct RawAttachmentInput: Sendable {
     public var size: Int?            // bytes, if the transport knows
     public var contentID: String?
     public var disposition: Disposition
+    public var sourceId: String?     // opaque transport id, carried through untouched
     public init(filename: String?, mimeType: String, size: Int?,
-                contentID: String?, disposition: Disposition)
+                contentID: String?, disposition: Disposition, sourceId: String? = nil)
 }
 
 public struct Attachment: Sendable, Equatable, Identifiable {
@@ -173,6 +181,7 @@ public struct Attachment: Sendable, Equatable, Identifiable {
     public var contentID: String?
     public var disposition: Disposition
     public var isTrulyInline: Bool   // contentID referenced by a cid: in the HTML body
+    public var sourceId: String?     // the RawAttachmentInput.sourceId, unchanged
 }
 
 public extension Array where Element == Attachment {

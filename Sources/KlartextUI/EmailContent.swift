@@ -31,19 +31,25 @@ public struct EmailPart: Sendable, Equatable {
     public var contentID: String?
     public var disposition: Disposition
     public var data: Data?
+    /// An opaque, transport-owned identifier the app can attach so the resolved
+    /// `Attachment` can be correlated back to its source for byte download. Carried
+    /// into `RawAttachmentInput.sourceId` by `parsed()` and never interpreted.
+    public var sourceId: String?
 
     public init(
         filename: String? = nil,
         mimeType: String,
         contentID: String? = nil,
         disposition: Disposition = .unknown,
-        data: Data? = nil
+        data: Data? = nil,
+        sourceId: String? = nil
     ) {
         self.filename = filename
         self.mimeType = mimeType
         self.contentID = contentID
         self.disposition = disposition
         self.data = data
+        self.sourceId = sourceId
     }
 }
 
@@ -81,7 +87,8 @@ public extension EmailContent {
                     mimeType: $0.mimeType,
                     size: $0.data?.count,
                     contentID: $0.contentID,
-                    disposition: $0.disposition
+                    disposition: $0.disposition,
+                    sourceId: $0.sourceId
                 )
             },
             options: options
