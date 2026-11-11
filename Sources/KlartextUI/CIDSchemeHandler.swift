@@ -7,11 +7,6 @@
 // and the matching part arrives in the fetched message with a Content-ID of
 // `<logo@example.com>`. WebKit has no built-in cid handling, so without this the
 // image renders blank.
-//
-// Privacy note: cid bytes are already on device — they came in with the message
-// the app fetched — so serving them opens no network connection and defines no
-// new external destination. cid images therefore render regardless of the remote
-// content gate in EmailHTMLView, which only blocks http(s). This is deliberate.
 
 #if canImport(UIKit)
 

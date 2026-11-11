@@ -442,12 +442,19 @@ showing a broken box. The handler is built on a fresh configuration per `makeUIV
 before the web view exists, and retained on the coordinator; the call site keys the view identity
 on the message so SwiftUI rebuilds it on message change.
 
-Remote resources are blocked by default through a `WKContentRuleList` matching `^https?://`, and
-`allowRemoteContent` opts in. This is a privacy gate, not a convenience toggle: remote images are
-tracking pixels and a new external destination, so loading them is the consumer's explicit choice.
-The `cid:` bytes correctly bypass the block because they are on device bytes from the
-already fetched message, not a network fetch, so they introduce no new destination. The package
-still never fetches the email itself; transport stays per app, exactly as section 1 requires.
+Nothing in a message reaches the network unless the consumer opts in. A `WKContentRuleList`
+blocks every load of any scheme and exempts only what never leaves the device: the locally loaded
+document (`about:`), `cid:` parts and `data:` bytes. `allowRemoteContent` adds one exemption,
+remote images, and nothing else: stylesheets, scripts, fonts, frames, sockets and navigations stay
+blocked. This is a privacy gate, not a convenience toggle: remote images are tracking pixels and a
+new external destination, so loading them is the consumer's explicit choice. WebKit's rule regex
+has no alternation, so each exempt scheme is its own rule. If the rule list fails to compile, the
+view shows the message as plain text rather than load it ungated.
+
+The message's own scripts never run (`allowsContentJavaScript` is off; the view's fit-to-width
+script is injected through `evaluateJavaScript`, which that setting does not affect), forms do not
+submit, and each view gets a non-persistent data store, so no cookie or storage outlives it. The
+package still never fetches the email itself; transport stays per app, as section 1 requires.
 
 ### EmailTextView
 
@@ -469,11 +476,9 @@ with its build output; the generator, the Swift sources, and a README are what t
 the spirit of a Tuist or XcodeGen spec. Credentials are held in memory for the session only and
 never written to disk. See `Harness/README.md`.
 
-### Status and what is left
+### Verification
 
-Built and verified on the simulator: force light render, the remote image gate, the `cid:` inline
-image (an Outlook signature logo paints with remote images off), and the native text fold with a
-subdued signature. The two consume passes are deliberately separate follow ups, each in its own
-thread: Zirbe repoints its Web View at `EmailHTMLView` and deletes its `HTMLWebView`, and Blick
-renders its sheet through the same view. Those threads consume KlartextUI; they do not modify it.
-This code belongs to Klartext.
+The gate is verified on the simulator by hosting `EmailHTMLView` over a message carrying a script,
+a remote stylesheet, a remote image and a remote frame: blocked, none of them load and the script
+does not run; with `allowRemoteContent`, the image loads and the rest stay blocked. The `cid:`
+inline image paints with remote content off.

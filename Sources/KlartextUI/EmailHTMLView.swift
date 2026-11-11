@@ -5,10 +5,6 @@
 // Renders an email's HTML faithfully — the sender's own design — in a sandboxed
 // web view. This is the rich path; `EmailTextView` is the compact one.
 //
-// Three things make it safe and correct by default:
-//   • Remote content is blocked until the reader opts in (a remote image is a
-//     tracking pixel until proven otherwise). Only `http(s)` subresources are
-//     gated; the HTML markup itself is loaded locally with no base URL.
 //   • `cid:` inline images are served from the message's own parts on device, so
 //     embedded logos and screenshots render without any network access. They are
 //     not http(s), so the remote block never touches them (see CIDSchemeHandler).
@@ -29,6 +25,7 @@
 import SwiftUI
 import UIKit
 import WebKit
+import Klartext
 
 public struct EmailHTMLView: UIViewRepresentable {
     private let content: EmailContent
@@ -46,6 +43,8 @@ public struct EmailHTMLView: UIViewRepresentable {
         // view is created, and the configuration cannot be reused. Build both
         // fresh here and retain the handler on the coordinator for the view's life.
         let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        configuration.websiteDataStore = .nonPersistent()
         let cidHandler = CIDSchemeHandler(parts: content.parts)
         configuration.setURLSchemeHandler(cidHandler, forURLScheme: "cid")
         context.coordinator.cidHandler = cidHandler
@@ -76,15 +75,15 @@ public struct EmailHTMLView: UIViewRepresentable {
     /// for a text-only message. (`EmailTextView` is the better choice there.)
     private var documentHTML: String {
         if let html = content.html, !html.isEmpty { return html }
-        let text = content.plainText ?? ""
-        return #"<pre style="white-space:pre-wrap;word-wrap:break-word;font:-apple-system-body;">"#
-            + Self.escape(text) + "</pre>"
+        return Self.textDocument(content.plainText ?? "")
     }
 
-    private static func escape(_ text: String) -> String {
-        text.replacingOccurrences(of: "&", with: "&amp;")
+    fileprivate static func textDocument(_ text: String) -> String {
+        let escaped = text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+        return #"<pre style="white-space:pre-wrap;word-wrap:break-word;font:-apple-system-body;">"#
+            + escaped + "</pre>"
     }
 
     /// Tracks the last render so an unrelated SwiftUI update doesn't reload the
@@ -100,11 +99,15 @@ public struct EmailHTMLView: UIViewRepresentable {
         private var lastHTML: String?
         private var lastAllowRemote: Bool?
 
-        /// The rule that blocks every remote load. Local `loadHTMLString` content
-        /// has no scheme and is unaffected; `cid:` is not http(s) so it is also
-        /// unaffected; only `http(s)` subresources match.
-        private static let blockRemoteRuleList = """
-        [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}}]
+        private static let blockAllRules = """
+        {"trigger":{"url-filter":".*"},"action":{"type":"block"}},\
+        {"trigger":{"url-filter":"^about:"},"action":{"type":"ignore-previous-rules"}},\
+        {"trigger":{"url-filter":"^cid:"},"action":{"type":"ignore-previous-rules"}},\
+        {"trigger":{"url-filter":"^data:"},"action":{"type":"ignore-previous-rules"}}
+        """
+
+        private static let remoteImagesRule = """
+        {"trigger":{"url-filter":"^https?://","resource-type":["image"]},"action":{"type":"ignore-previous-rules"}}
         """
 
         func render(html: String, allowRemoteContent: Bool, in webView: WKWebView) {
@@ -116,21 +119,22 @@ public struct EmailHTMLView: UIViewRepresentable {
             let controller = webView.configuration.userContentController
             controller.removeAllContentRuleLists()
 
-            if allowRemoteContent {
-                webView.loadHTMLString(document, baseURL: nil)
-            } else {
-                WKContentRuleListStore.default().compileContentRuleList(
-                    forIdentifier: "klartext-block-remote",
-                    encodedContentRuleList: Self.blockRemoteRuleList
-                ) { ruleList, _ in
-                    if let ruleList { controller.add(ruleList) }
-                    // Load whether or not compilation succeeded: failing closed
-                    // would show a blank page, so on the rare compile error we
-                    // render the mail rather than nothing.
-                    webView.loadHTMLString(document, baseURL: nil)
+            let identifier = allowRemoteContent ? "klartext-remote-images" : "klartext-block-remote"
+            let rules = "[" + Self.blockAllRules
+                + (allowRemoteContent ? "," + Self.remoteImagesRule : "") + "]"
+            WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: identifier,
+                encodedContentRuleList: rules
+            ) { ruleList, _ in
+                guard let ruleList else {
+                    webView.loadHTMLString(EmailHTMLView.textDocument(Klartext.plainText(fromHTML: html)), baseURL: nil)
+                    return
                 }
+                controller.add(ruleList)
+                webView.loadHTMLString(document, baseURL: nil)
             }
         }
+
 
         /// Email HTML often omits a mobile viewport, so WKWebView lays it out at a
         /// desktop width and it shows zoomed out and overflowing. Inject a
@@ -192,11 +196,13 @@ public struct EmailHTMLView: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            if navigationAction.navigationType == .linkActivated,
-               let url = navigationAction.request.url {
+            switch navigationAction.navigationType {
+            case .linkActivated:
                 decisionHandler(.cancel)
-                UIApplication.shared.open(url)
-            } else {
+                if let url = navigationAction.request.url { UIApplication.shared.open(url) }
+            case .formSubmitted, .formResubmitted:
+                decisionHandler(.cancel)
+            default:
                 decisionHandler(.allow)
             }
         }
