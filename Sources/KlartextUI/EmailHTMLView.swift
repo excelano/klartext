@@ -12,9 +12,6 @@
 //     senders set dark text and rarely supply a background, so a dark-mode tray
 //     would render plain mail dark-on-dark. We render the way Apple Mail does.
 //
-// A tapped link is handed to the system browser rather than navigating inside
-// this view, so links keep working even while images are blocked.
-//
 // View identity: the cid scheme handler is bound to the web view's configuration
 // at creation, which cannot be re-registered. Callers showing a different message
 // in the same place must give this view a stable `.id(messageIdentifier)` so
@@ -30,27 +27,44 @@ import Klartext
 public struct EmailHTMLView: UIViewRepresentable {
     private let content: EmailContent
     private let allowRemoteContent: Bool
+    private let onLink: (@MainActor (EmailLink) -> Void)?
 
-    public init(content: EmailContent, allowRemoteContent: Bool = false) {
+    public init(
+        content: EmailContent,
+        allowRemoteContent: Bool = false,
+        onLink: (@MainActor (EmailLink) -> Void)? = nil
+    ) {
         self.content = content
         self.allowRemoteContent = allowRemoteContent
+        self.onLink = onLink
     }
 
     public func makeCoordinator() -> Coordinator { Coordinator() }
 
     public func makeUIView(context: Context) -> WKWebView {
+        Self.makeWebView(parts: content.parts, coordinator: context.coordinator)
+    }
+
+    static func makeWebView(parts: [EmailPart], coordinator: Coordinator) -> WKWebView {
         // The cid handler must be registered on the configuration before the web
         // view is created, and the configuration cannot be reused. Build both
         // fresh here and retain the handler on the coordinator for the view's life.
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.websiteDataStore = .nonPersistent()
-        let cidHandler = CIDSchemeHandler(parts: content.parts)
+        let cidHandler = CIDSchemeHandler(parts: parts)
         configuration.setURLSchemeHandler(cidHandler, forURLScheme: "cid")
-        context.coordinator.cidHandler = cidHandler
+        coordinator.cidHandler = cidHandler
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: Coordinator.linkScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false,
+            in: .defaultClient
+        ))
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: Coordinator.linkMessage)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
+        webView.navigationDelegate = coordinator
         // Force light: opaque white canvas in a forced-light context so plain
         // text-as-HTML can't come out dark-on-dark and a sender's own dark Web
         // View backdrop never shows through. The document declares
@@ -63,6 +77,7 @@ public struct EmailHTMLView: UIViewRepresentable {
     }
 
     public func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onLink = onLink
         context.coordinator.render(
             html: documentHTML,
             allowRemoteContent: allowRemoteContent,
@@ -90,14 +105,27 @@ public struct EmailHTMLView: UIViewRepresentable {
     /// page (and lose the reader's scroll position) when nothing it cares about
     /// changed. Only a new body or a flip of the remote-content gate reloads.
     /// Also the navigation delegate, routing tapped links out to the browser.
-    public final class Coordinator: NSObject, WKNavigationDelegate {
+    public final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         /// Retains the cid handler for the web view's lifetime. The configuration
         /// holds it weakly enough that losing this reference silently breaks
         /// inline images.
         var cidHandler: CIDSchemeHandler?
+        var onLink: (@MainActor (EmailLink) -> Void)?
 
         private var lastHTML: String?
         private var lastAllowRemote: Bool?
+        private var tappedLink: EmailLink?
+
+        static let linkMessage = "klartextLink"
+
+        static let linkScript = """
+        document.addEventListener('click', function (event) {
+          var anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+          if (anchor) {
+            window.webkit.messageHandlers.\(linkMessage).postMessage({ href: String(anchor.href), text: anchor.innerText || '' });
+          }
+        }, true);
+        """
 
         private static let blockAllRules = """
         {"trigger":{"url-filter":".*"},"action":{"type":"block"}},\
@@ -188,10 +216,17 @@ public struct EmailHTMLView: UIViewRepresentable {
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
 
-        /// Render the local HTML in place, but send a tapped link out to the
-        /// system browser (Safari, Mail for `mailto:`, the dialer for `tel:`)
-        /// rather than navigating inside this sandboxed view. The first
-        /// `loadHTMLString` is a `.other` navigation and is allowed through.
+        public func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard let body = message.body as? [String: Any],
+                  let href = body["href"] as? String,
+                  let url = URL(string: href) else { return }
+            let text = (body["text"] as? String ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            tappedLink = EmailLink(url: url, text: text)
+        }
+
         public func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -200,7 +235,14 @@ public struct EmailHTMLView: UIViewRepresentable {
             switch navigationAction.navigationType {
             case .linkActivated:
                 decisionHandler(.cancel)
-                if let url = navigationAction.request.url { UIApplication.shared.open(url) }
+                let tapped = tappedLink
+                tappedLink = nil
+                guard let url = navigationAction.request.url else { return }
+                if let onLink {
+                    onLink(EmailLink(url: url, text: tapped?.url == url ? tapped?.text ?? "" : ""))
+                } else {
+                    UIApplication.shared.open(url)
+                }
             case .formSubmitted, .formResubmitted:
                 decisionHandler(.cancel)
             default:
