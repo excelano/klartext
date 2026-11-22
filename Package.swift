@@ -50,5 +50,9 @@ let package = Package(
             dependencies: ["Klartext"],
             resources: [.copy("Corpus")]
         ),
+        .testTarget(
+            name: "KlartextUITests",
+            dependencies: ["KlartextUI"]
+        ),
     ]
 )

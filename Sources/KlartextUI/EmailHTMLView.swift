@@ -115,7 +115,7 @@ public struct EmailHTMLView: UIViewRepresentable {
             lastHTML = html
             lastAllowRemote = allowRemoteContent
 
-            let document = Self.prepared(html)
+            let document = Self.prepared(html, allowRemoteContent: allowRemoteContent)
             let controller = webView.configuration.userContentController
             controller.removeAllContentRuleLists()
 
@@ -141,7 +141,8 @@ public struct EmailHTMLView: UIViewRepresentable {
         /// device-width viewport (only when the mail doesn't set its own, so
         /// responsive emails keep theirs) plus a little CSS so wide images shrink
         /// to fit rather than spilling past the edge.
-        static func prepared(_ html: String) -> String {
+        nonisolated static func prepared(_ source: String, allowRemoteContent: Bool) -> String {
+            let html = allowRemoteContent ? TrackingPixel.neutralized(source) : source
             let hasViewport = html.range(
                 of: "name=[\"']?viewport", options: [.regularExpression, .caseInsensitive]
             ) != nil
