@@ -194,7 +194,7 @@ public struct EmailHTMLView: UIViewRepresentable {
         public func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             switch navigationAction.navigationType {
             case .linkActivated:
