@@ -51,6 +51,7 @@ import a view needs):
 let content = EmailContent(html: html, plainText: text, parts: parts)
 
 EmailHTMLView(content: content, allowRemoteContent: false) // faithful web render
+EmailHTMLView(content: content) { link in /* check link.url against link.text */ }
 EmailTextView(content: content)                            // native fold
 ```
 

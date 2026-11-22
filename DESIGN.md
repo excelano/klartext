@@ -385,13 +385,14 @@ consuming app owns all chrome around it. The view renders the email the way the 
 fetches the email through its own transport, hands the toolkit a structured `EmailContent`, and
 gets back SwiftUI views it drops in.
 
-**Shape.** KlartextUI is a second SPM product in the same package and repo (one repo, one
-version), depending on `Klartext` plus WebKit and SwiftUI, never on SwiftSoup. SPM platforms are
-package wide, so every KlartextUI source is wrapped in `#if canImport(UIKit)` and compiles to
-empty on the macOS slice that `swift test` uses; the core stays cross platform and the parsing
-tests are untouched. KlartextUI is verified against real mail through the harness app on the iOS
-simulator, not through `swift test`. The SwiftSoup encapsulation rule is preserved in full: the
-UI lives in its own target and never imports WebKit into the core or SwiftSoup into the UI.
+**Shape.** KlartextUI is a second SPM product in the same package and repo (one repo, one version),
+depending on `Klartext` plus WebKit and SwiftUI, never on SwiftSoup. SPM platforms are package
+wide, so every KlartextUI source is wrapped in `#if canImport(UIKit)` and compiles to empty on the
+macOS slice that `swift test` uses; the core stays cross platform and the parsing tests are
+untouched. KlartextUI's own tests (`KlartextUITests`) run on the iOS simulator through `xcodebuild
+test`, and the views are checked against real mail through the harness app. The SwiftSoup
+encapsulation rule is preserved in full: the UI lives in its own target and never imports WebKit
+into the core or SwiftSoup into the UI.
 
 ### Public surface
 
@@ -415,7 +416,17 @@ public struct EmailContent {
 
 // The faithful rich render.
 public struct EmailHTMLView: UIViewRepresentable {
-    public init(content: EmailContent, allowRemoteContent: Bool = false)
+    public init(
+        content: EmailContent,
+        allowRemoteContent: Bool = false,
+        onLink: (@MainActor (EmailLink) -> Void)? = nil
+    )
+}
+
+// A tapped link, handed to `onLink`.
+public struct EmailLink: Sendable, Hashable {
+    public let url: URL      // the activated URL as the page gave it
+    public let text: String  // the anchor's visible text, whitespace collapsed; empty for an image link
 }
 
 // The compact native render.
@@ -433,28 +444,42 @@ rest.
 ### EmailHTMLView
 
 The rich path, a `UIViewRepresentable` over `WKWebView`. It renders force light (a white canvas,
-`overrideUserInterfaceStyle = .light`, injected `color-scheme: light`), because dark mode
-inversion breaks branded mail; injects a viewport and fits content to width; and routes link taps
-out to the system browser rather than navigating in place. Its new capability over the old view is
-a `cid:` scheme handler (`WKURLSchemeHandler`) that serves inline image bytes from
-`EmailContent.parts` on the device, so embedded logos and signature graphics paint instead of
-showing a broken box. The handler is built on a fresh configuration per `makeUIView`, registered
-before the web view exists, and retained on the coordinator; the call site keys the view identity
-on the message so SwiftUI rebuilds it on message change.
+`overrideUserInterfaceStyle = .light`, injected `color-scheme: light`), because dark mode inversion
+breaks branded mail; injects a viewport and fits content to width; and never navigates in place
+when a link is tapped. With no `onLink` handler the link goes to the system (Safari, Mail for
+`mailto:`, the dialer for `tel:`); with one, the view cancels the navigation and hands the handler
+an `EmailLink`, and the app decides whether and how to open it, so it can check the link first.
+Checks on the link itself (look-alike hosts, text naming a different site, tracking parameters)
+belong in the app. Its new capability over the old view is a `cid:` scheme handler
+(`WKURLSchemeHandler`) that serves inline image bytes from `EmailContent.parts` on the device, so
+embedded logos and signature graphics paint instead of showing a broken box. The handler is built
+on a fresh configuration per `makeUIView`, registered before the web view exists, and retained on
+the coordinator; the call site keys the view identity on the message so SwiftUI rebuilds it on
+message change.
 
-Nothing in a message reaches the network unless the consumer opts in. A `WKContentRuleList`
-blocks every load of any scheme and exempts only what never leaves the device: the locally loaded
-document (`about:`), `cid:` parts and `data:` bytes. `allowRemoteContent` adds one exemption,
-remote images, and nothing else: stylesheets, scripts, fonts, frames, sockets and navigations stay
-blocked. This is a privacy gate, not a convenience toggle: remote images are tracking pixels and a
-new external destination, so loading them is the consumer's explicit choice. WebKit's rule regex
-has no alternation, so each exempt scheme is its own rule. If the rule list fails to compile, the
-view shows the message as plain text rather than load it ungated.
+Nothing in a message reaches the network unless the consumer opts in. A `WKContentRuleList` blocks
+every load of any scheme and exempts only what never leaves the device: the locally loaded document
+(`about:`), `cid:` parts and `data:` bytes. `allowRemoteContent` adds one exemption, remote images,
+and nothing else: stylesheets, scripts, fonts, frames, sockets and navigations stay blocked. This
+is a privacy gate, not a convenience toggle: remote images are tracking pixels and a new external
+destination, so loading them is the consumer's explicit choice. Even with the gate open, an `<img>`
+that is a likely beacon has its remote `src` and `srcset` removed before the page loads, keeping
+the element so the layout does not shift: declared `width` and `height` whose product is at most 25
+square pixels, or an inline `style` giving `width`, `height`, `max-width` or `max-height` of 1px or
+less, `display:none` or `visibility:hidden`. A repeated address is not a signal, since newsletters
+repeat icons, and `data:` and `cid:` images are never touched. The edit is made tag by tag on the
+source, never by re-serializing the document, so everything else reaches WebKit as the sender wrote
+it. WebKit's rule regex has no alternation, so each exempt scheme is its own rule. If the rule list
+fails to compile, the view shows the message as plain text rather than load it ungated.
 
-The message's own scripts never run (`allowsContentJavaScript` is off; the view's fit-to-width
-script is injected through `evaluateJavaScript`, which that setting does not affect), forms do not
-submit, and each view gets a non-persistent data store, so no cookie or storage outlives it. The
-package still never fetches the email itself; transport stays per app, as section 1 requires.
+The message's own scripts never run, forms do not submit, and each view gets a non-persistent data
+store, so no cookie or storage outlives it. `allowsContentJavaScript` is off, which stops the
+page's scripts and leaves the view's own: the fit-to-width script goes through
+`evaluateJavaScript`, and the click listener that reads a tapped link's text is a user script in
+`WKContentWorld.defaultClient`, a world the page cannot see or reach. The listener reports the
+anchor's `href` and text to a script message handler, and the navigation decision pairs that report
+with the activated URL. The package still never fetches the email itself; transport stays per app,
+as section 1 requires.
 
 ### EmailTextView
 
